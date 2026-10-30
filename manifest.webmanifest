@@ -1,0 +1,13 @@
+{
+  "id": "/",
+  "name": "Jashn Event Planner",
+  "short_name": "Jashn",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#080c19",
+  "theme_color": "#0b1020",
+  "icons": [
+    { "src": "/jashn-logo-transparent.png", "sizes": "any", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

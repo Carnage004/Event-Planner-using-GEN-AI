@@ -1,4 +1,3 @@
-import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
@@ -16,7 +15,6 @@ if (existsSync(ENV_FILE)) {
     if (match && !process.env[match[1]]) process.env[match[1]] = match[2].replace(/^(["'])(.*)\1$/, '$2');
   }
 }
-const PORT = Number(process.env.PORT || 3000);
 const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8', '.webmanifest': 'application/manifest+json; charset=utf-8' };
 const firebaseProjectId = process.env.FIREBASE_PROJECT_ID || '';
 let firebaseAuth = null;
@@ -285,9 +283,3 @@ self.addEventListener('notificationclick',event=>{event.notification.close();con
 };
 
 export default handler;
-
-// Vercel imports this handler from api/[...path].mjs. For local use, keep
-// the existing `npm start` standalone HTTP server behavior.
-if (!process.env.VERCEL) {
-  createServer(handler).listen(PORT, process.env.K_SERVICE ? '0.0.0.0' : '127.0.0.1', () => console.log(`Jashn is ready at http://127.0.0.1:${PORT}`));
-}

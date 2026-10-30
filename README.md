@@ -29,7 +29,7 @@ Set GEMINI_API_KEY in .env to enable live Gemini responses for /api/ideas and /a
 
 - .env.example — Firebase web settings and server credential path template
 - firebase.json and firestore.rules — Firestore rules configuration
-- server.mjs — Firebase token verification, profile and plan APIs, Gemini Interactions API/OpenAI planning endpoints, and web push device registration
+- server-handler.mjs — Firebase token verification, profile and plan APIs, Gemini/OpenAI planning endpoints, and web push device registration; local.mjs starts it for `npm start`
 - functions/index.js — scheduled sender for saved timeline reminders
 - manifest.webmanifest — installable web app metadata
 - planner.html — Jashn interface, Firebase Authentication flows, and user-managed vendor lists

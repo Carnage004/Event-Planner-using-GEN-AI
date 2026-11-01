@@ -17,10 +17,6 @@ A celebratory event planner with Firebase Authentication, Cloud Firestore, and a
 
 8. Open http://127.0.0.1:3000.
 
-## Automated checks
-
-Run `npm test` to execute the built-in Node.js test suite. It checks API health and public Firebase configuration, signed-out access rules, request validation and size limits, method handling, plan normalization, celebration-specific fallback ideas, mobile and accessibility page markers, and static path traversal protection.
-
 The client uses the Firebase JavaScript SDK 13.1.0. The Node backend verifies Firebase ID tokens with the Firebase Admin SDK. Event plans are stored under users/{uid}/plans in Cloud Firestore; profile data is stored under users/{uid}. The server verifies the signed-in user and scopes every plan request to that UID. Users add and manage their own event vendors (contact details, service, estimated cost, notes, and booking status); those entries are stored inside the event plan in Firestore. Jashn does not present fictional vendor profiles as real businesses. Deploy firestore.rules before using Firestore directly from client code; the Admin SDK server calls use IAM and perform their own user/ownership checks.
 
 The .env file and service-account JSON are private local configuration and are excluded from the project ZIP. The existing SQLite prototype data is not migrated automatically. Existing local accounts will need to create Firebase accounts; old plans remain in the local data folder until you choose to migrate them.

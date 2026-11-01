@@ -309,8 +309,3 @@ export default handler;
 if (!process.env.VERCEL) {
   createServer(handler).listen(PORT, process.env.K_SERVICE ? '0.0.0.0' : '127.0.0.1', () => console.log(`Jashn is ready at http://127.0.0.1:${PORT}`));
 }
-
-// keep the existing `npm start` standalone HTTP server behavior.
-if (!process.env.VERCEL) {
-  createServer(handler).listen(PORT, process.env.K_SERVICE ? '0.0.0.0' : '127.0.0.1', () => console.log(`Jashn is ready at http://127.0.0.1:${PORT}`));
-}

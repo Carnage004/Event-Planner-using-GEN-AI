@@ -8,7 +8,8 @@
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "test": "node --test"
+    "test": "node --test",
+    "test:coverage": "node --test --experimental-test-coverage"
   },
   "dependencies": {
     "firebase-admin": "^14.5.0"
@@ -21,3 +22,5 @@
     }
   }
 }
+
+

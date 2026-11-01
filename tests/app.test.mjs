@@ -64,6 +64,36 @@ test('plans API rejects requests without a verified account', async () => {
   assert.equal(Array.isArray(payload), false);
 });
 
+test('protected endpoints fail closed when server credentials are unavailable', async () => {
+  const names = ['FIREBASE_SERVICE_ACCOUNT_JSON', 'GOOGLE_APPLICATION_CREDENTIALS', 'K_SERVICE', 'GAE_ENV'];
+  const previous = Object.fromEntries(names.map(name => [name, process.env[name]]));
+  try {
+    delete process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+    process.env.GOOGLE_APPLICATION_CREDENTIALS = '/path/that/does/not/exist.json';
+    delete process.env.K_SERVICE;
+    delete process.env.GAE_ENV;
+    const protectedRoutes = [
+      ['GET', '/api/notifications/status'],
+      ['POST', '/api/notifications/device'],
+      ['PUT', '/api/profile'],
+      ['GET', '/api/plans'],
+      ['POST', '/api/plans'],
+      ['PUT', '/api/plans/plan-1'],
+      ['DELETE', '/api/plans/plan-1'],
+      ['POST', '/api/chat'],
+    ];
+    for (const [method, url] of protectedRoutes) {
+      const response = await request(method, url);
+      assert.equal(response.status, 503, `${method} ${url} should fail closed without admin credentials`);
+    }
+  } finally {
+    for (const name of names) {
+      if (previous[name] === undefined) delete process.env[name];
+      else process.env[name] = previous[name];
+    }
+  }
+});
+
 test('API rejects malformed JSON with a client error', async () => {
   const response = await request('POST', '/api/ideas', '{invalid json', { 'content-type': 'application/json' });
   assert.equal(response.status, 400);
@@ -76,9 +106,70 @@ test('API rejects oversized request bodies', async () => {
   assert.equal(response.status, 413);
 });
 
+test('request size limit counts UTF-8 bytes, not just characters', async () => {
+  const body = JSON.stringify({ note: '🎉'.repeat(13_000) });
+  const response = await request('POST', '/api/ideas', body, { 'content-type': 'application/json' });
+  assert.equal(response.status, 413);
+});
+
 test('unknown API methods fail closed', async () => {
   const response = await request('DELETE', '/api/health');
   assert.equal(response.status, 405);
+});
+
+test('unknown API routes return not found', async () => {
+  const response = await request('GET', '/api/not-a-route');
+  assert.equal(response.status, 404);
+});
+
+test('malformed percent encoding is rejected as a client error', async () => {
+  const response = await request('GET', '/bad%ZZpath');
+  assert.equal(response.status, 400);
+  assert.match(JSON.parse(response.body).error, /invalid url path/i);
+});
+
+test('static HEAD requests return headers without a response body', async () => {
+  const response = await request('HEAD', '/');
+  assert.equal(response.status, 200);
+  assert.equal(response.body, '');
+  assert.match(response.headers['Content-Type'], /text\/html/);
+  assert.match(response.headers['Cache-Control'], /must-revalidate/);
+});
+
+test('logo is served as a compact, cacheable JPEG asset', async () => {
+  const response = await request('HEAD', '/jashn-logo-gradient.jpg');
+  assert.equal(response.status, 200);
+  assert.match(response.headers['Content-Type'], /image\/jpeg/);
+  assert.match(response.headers['Cache-Control'], /max-age=86400/);
+  assert.equal(response.body, '');
+});
+
+test('messaging service worker is served from the site root', async () => {
+  const response = await request('GET', '/firebase-messaging-sw.js');
+  assert.equal(response.status, 200);
+  assert.match(response.headers['Content-Type'], /javascript/);
+  assert.match(response.body, /onBackgroundMessage/);
+  assert.match(response.body, /notificationclick/);
+});
+
+test('idea endpoint returns useful built-in ideas when provider keys are absent', async () => {
+  const previousGemini = process.env.GEMINI_API_KEY;
+  const previousOpenAI = process.env.OPENAI_API_KEY;
+  try {
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const response = await request('POST', '/api/ideas', JSON.stringify({ type: 'Community gathering' }), { 'content-type': 'application/json' });
+    const payload = JSON.parse(response.body);
+    assert.equal(response.status, 200);
+    assert.equal(payload.source, 'built-in');
+    assert.equal(payload.ideas.length, 3);
+    assert.match(payload.ideas[0][1], /name tags/i);
+  } finally {
+    if (previousGemini === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = previousGemini;
+    if (previousOpenAI === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previousOpenAI;
+  }
 });
 
 test('plan input is normalized, bounded, and safe for unexpected JSON shapes', () => {

@@ -17,7 +17,7 @@ if (existsSync(ENV_FILE)) {
   }
 }
 const PORT = Number(process.env.PORT || 3000);
-const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8', '.webmanifest': 'application/manifest+json; charset=utf-8' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8', '.jpg': 'image/jpeg', '.png': 'image/png', '.webmanifest': 'application/manifest+json; charset=utf-8' };
 const firebaseProjectId = process.env.FIREBASE_PROJECT_ID || '';
 let firebaseAuth = null;
 let firestore = null;
@@ -37,12 +37,15 @@ function send(res, status, payload, type = 'application/json; charset=utf-8') {
 }
 
 async function bodyJson(req) {
-  let raw = '';
+  const chunks = [];
+  let size = 0;
   for await (const chunk of req) {
-    raw += chunk;
-    if (raw.length > 50_000) throw Object.assign(new Error('Request is too large'), { status: 413 });
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.length;
+    if (size > 50_000) throw Object.assign(new Error('Request is too large'), { status: 413 });
+    chunks.push(buffer);
   }
-  try { return JSON.parse(raw || '{}'); }
+  try { return JSON.parse(Buffer.concat(chunks, size).toString('utf8') || '{}'); }
   catch { throw Object.assign(new Error('Send valid JSON'), { status: 400 }); }
 }
 
@@ -187,7 +190,8 @@ const messaging=firebase.messaging();
 messaging.onBackgroundMessage(payload=>{const data=payload.data||{};self.registration.showNotification(data.title||'Jashn reminder',{body:data.body||'A moment on your celebration timeline is coming up.',icon:'/jashn-logo-transparent.png',badge:'/jashn-logo-transparent.png',data:{url:data.url||'/'}})});
 self.addEventListener('notificationclick',event=>{event.notification.close();const target=new URL(event.notification.data?.url||'/',self.location.origin).href;event.waitUntil(clients.matchAll({type:'window',includeUncontrolled:true}).then(windows=>{for(const client of windows){if(new URL(client.url).origin===self.location.origin){client.focus();return client.navigate(target)}}return clients.openWindow(target)}))});`;
       return send(res, 200, worker, 'text/javascript; charset=utf-8');
-    }    if (req.method === 'GET' && url.pathname === '/api/config/firebase') {
+    }
+    if (req.method === 'GET' && url.pathname === '/api/config/firebase') {
       const config = publicFirebaseConfig();
       const webConfigured = Boolean(config.apiKey && config.projectId && config.appId);
       const adminConfigured = Boolean(firebaseAuth && firestore && hasAdminCredentials());
@@ -224,7 +228,8 @@ self.addEventListener('notificationclick',event=>{event.notification.close();con
         await deviceRef.set({ token, origin: /^https?:\/\//i.test(origin) ? origin : '', updatedAt: new Date().toISOString(), userAgent: String(req.headers['user-agent'] || '').slice(0, 300) }, { merge: true });
       }
       return send(res, 200, { ok: true });
-    }    if (req.method === 'PUT' && url.pathname === '/api/profile') {
+    }
+    if (req.method === 'PUT' && url.pathname === '/api/profile') {
       const user = await requireFirebaseUser(req, res); if (!user) return;
       const input = await bodyJson(req), name = String(input.name || '').trim().slice(0, 80), phone = String(input.phone || '').trim().slice(0, 40);
       if (!name) return send(res, 400, { error: 'Enter your name' });
@@ -272,22 +277,39 @@ self.addEventListener('notificationclick',event=>{event.notification.close();con
       catch (error) { console.error('Chat response failed:', error.message); return send(res, 502, { error: error.message.startsWith('Gemini API error ') ? error.message : 'The planning helper is temporarily unavailable. Check the server terminal for details.' }); }
     }
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { error: 'Method not allowed' });
-    const requested = decodeURIComponent(url.pathname === '/' || url.pathname === '/index.html' ? '/planner.html' : url.pathname);
+    let requested;
+    try {
+      requested = decodeURIComponent(url.pathname === '/' || url.pathname === '/index.html' ? '/planner.html' : url.pathname);
+    } catch {
+      return send(res, 400, { error: 'Invalid URL path' });
+    }
     const file = resolve(ROOT, `.${requested}`);
     // path.resolve removes the trailing separator from ROOT, so compare with a
     // single platform separator here (ROOT itself is not a valid file path).
     if (file === ROOT || !file.startsWith(ROOT + sep)) return send(res, 403, { error: 'Forbidden' });
     const content = await readFile(file);
-    res.writeHead(200, { 'Content-Type': MIME[extname(file)] || 'application/octet-stream', 'X-Content-Type-Options': 'nosniff' });
+    res.writeHead(200, {
+      'Content-Type': MIME[extname(file)] || 'application/octet-stream',
+      'X-Content-Type-Options': 'nosniff',
+      'Cache-Control': extname(file) === '.html'
+        ? 'public, max-age=0, must-revalidate'
+        : 'public, max-age=86400, stale-while-revalidate=604800',
+    });
     return req.method === 'HEAD' ? res.end() : res.end(content);
   } catch (err) {
-    return send(res, err.status || (err.code === 'ENOENT' ? 404 : 500), { error: err.status ? err.message : 'Server error' });
+    const status = err.status || (err.code === 'ENOENT' ? 404 : err instanceof URIError ? 400 : 500);
+    return send(res, status, { error: err.status || err instanceof URIError ? err.message : 'Server error' });
   }
 };
 
 export default handler;
 
 // Vercel imports the request handler from api/[...path].mjs. For local use,
+// keep the existing `npm start` standalone HTTP server behavior.
+if (!process.env.VERCEL) {
+  createServer(handler).listen(PORT, process.env.K_SERVICE ? '0.0.0.0' : '127.0.0.1', () => console.log(`Jashn is ready at http://127.0.0.1:${PORT}`));
+}
+
 // keep the existing `npm start` standalone HTTP server behavior.
 if (!process.env.VERCEL) {
   createServer(handler).listen(PORT, process.env.K_SERVICE ? '0.0.0.0' : '127.0.0.1', () => console.log(`Jashn is ready at http://127.0.0.1:${PORT}`));

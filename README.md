@@ -17,6 +17,10 @@ A celebratory event planner with Firebase Authentication, Cloud Firestore, and a
 
 8. Open http://127.0.0.1:3000.
 
+## Automated checks
+
+Run `npm test` to execute the built-in Node.js test suite. It checks API health and public Firebase configuration, signed-out access rules, request validation and size limits, method handling, plan normalization, celebration-specific fallback ideas, mobile and accessibility page markers, and static path traversal protection.
+
 The client uses the Firebase JavaScript SDK 13.1.0. The Node backend verifies Firebase ID tokens with the Firebase Admin SDK. Event plans are stored under users/{uid}/plans in Cloud Firestore; profile data is stored under users/{uid}. The server verifies the signed-in user and scopes every plan request to that UID. Users add and manage their own event vendors (contact details, service, estimated cost, notes, and booking status); those entries are stored inside the event plan in Firestore. Jashn does not present fictional vendor profiles as real businesses. Deploy firestore.rules before using Firestore directly from client code; the Admin SDK server calls use IAM and perform their own user/ownership checks.
 
 The .env file and service-account JSON are private local configuration and are excluded from the project ZIP. The existing SQLite prototype data is not migrated automatically. Existing local accounts will need to create Firebase accounts; old plans remain in the local data folder until you choose to migrate them.
@@ -29,7 +33,7 @@ Set GEMINI_API_KEY in .env to enable live Gemini responses for /api/ideas and /a
 
 - .env.example — Firebase web settings and server credential path template
 - firebase.json and firestore.rules — Firestore rules configuration
-- server-handler.mjs — Firebase token verification, profile and plan APIs, Gemini/OpenAI planning endpoints, and web push device registration; local.mjs starts it for `npm start`
+- server.mjs — Firebase token verification, profile and plan APIs, Gemini Interactions API/OpenAI planning endpoints, and web push device registration
 - functions/index.js — scheduled sender for saved timeline reminders
 - manifest.webmanifest — installable web app metadata
 - planner.html — Jashn interface, Firebase Authentication flows, and user-managed vendor lists
@@ -75,10 +79,3 @@ Local `npm start` is only for development. To deliver reminders when the app is 
 5. Open the deployed HTTPS URL on the phone, sign in, go to Settings, and choose **Enable notifications**. Accept the browser permission prompt. Save plans with a date and timeline to receive reminders.
 
 The VAPID public key is included in `.env.example`. The private service-account JSON and local `.env` are not included in the ZIP. Push delivery is not active until deployment and device opt-in are complete.
-## Vercel deployment
-
-This project includes `api/[...path].mjs` as a Vercel catch-all API route and rewrites `/` to `planner.html`. Import the repository into Vercel using the repository root. Leave the Build Command and Output Directory at their defaults.
-
-Add these environment variables in Vercel Project Settings for Production (and Preview if needed): `FIREBASE_API_KEY`, `FIREBASE_AUTH_DOMAIN`, `FIREBASE_PROJECT_ID`, `FIREBASE_APP_ID`, `FIREBASE_MESSAGING_SENDER_ID`, and `FIREBASE_SERVICE_ACCOUNT_JSON`. The last variable must contain the complete contents of your replacement Firebase service-account JSON key and must be treated as a secret. Add `GEMINI_API_KEY` to enable the Gemini assistant. Do not set `GOOGLE_APPLICATION_CREDENTIALS` to a local Windows path on Vercel.
-
-After deployment, add the Vercel domain under Firebase Console > Authentication > Settings > Authorized domains. Redeploy after changing environment variables. Never commit `.env` or a service-account key.

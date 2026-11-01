@@ -18,6 +18,11 @@ if (existsSync(ENV_FILE)) {
 }
 const PORT = Number(process.env.PORT || 3000);
 const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8', '.jpg': 'image/jpeg', '.png': 'image/png', '.webmanifest': 'application/manifest+json; charset=utf-8' };
+// Only publish files the browser needs. Never expose server code, config, or dotfiles.
+const PUBLIC_FILES = new Set([
+  '/index.html', '/planner.html', '/manifest.webmanifest',
+  '/jashn-logo-gradient.jpg', '/jashn-logo-transparent.png', '/jashn-logo.png',
+]);
 const firebaseProjectId = process.env.FIREBASE_PROJECT_ID || '';
 let firebaseAuth = null;
 let firestore = null;
@@ -287,6 +292,7 @@ self.addEventListener('notificationclick',event=>{event.notification.close();con
     // path.resolve removes the trailing separator from ROOT, so compare with a
     // single platform separator here (ROOT itself is not a valid file path).
     if (file === ROOT || !file.startsWith(ROOT + sep)) return send(res, 403, { error: 'Forbidden' });
+    if (!PUBLIC_FILES.has(requested)) return send(res, 404, { error: 'Not found' });
     const content = await readFile(file);
     res.writeHead(200, {
       'Content-Type': MIME[extname(file)] || 'application/octet-stream',

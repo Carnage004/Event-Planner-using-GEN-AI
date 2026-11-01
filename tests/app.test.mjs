@@ -172,6 +172,80 @@ test('idea endpoint returns useful built-in ideas when provider keys are absent'
   }
 });
 
+test('Gemini idea generation parses model output and reports its source', async () => {
+  const previousGemini = process.env.GEMINI_API_KEY;
+  const previousOpenAI = process.env.OPENAI_API_KEY;
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env.GEMINI_API_KEY = 'test-key';
+    delete process.env.OPENAI_API_KEY;
+    globalThis.fetch = async (url, options) => {
+      assert.match(String(url), /generativelanguage\.googleapis\.com/);
+      assert.equal(options.headers['x-goog-api-key'], 'test-key');
+      return new Response(JSON.stringify({ steps: [{ type: 'model_output', content: [{ type: 'text', text: '{"ideas":[["A welcome table","Offer a seasonal drink."],["A memory wall","Invite guests to share a note."],["A quiet corner","Set aside a calm seating area."] ]}' }] }] }), { status: 200 });
+    };
+    const response = await request('POST', '/api/ideas', JSON.stringify({ type: 'Birthday' }), { 'content-type': 'application/json' });
+    const payload = JSON.parse(response.body);
+    assert.equal(response.status, 200);
+    assert.equal(payload.source, 'gemini');
+    assert.equal(payload.ideas.length, 3);
+    assert.equal(payload.ideas[0][0], 'A welcome table');
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousGemini === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = previousGemini;
+    if (previousOpenAI === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previousOpenAI;
+  }
+});
+
+test('AI provider failures fall back to built-in ideas instead of failing the request', async () => {
+  const previousGemini = process.env.GEMINI_API_KEY;
+  const previousOpenAI = process.env.OPENAI_API_KEY;
+  const previousFetch = globalThis.fetch;
+  try {
+    process.env.GEMINI_API_KEY = 'test-key';
+    delete process.env.OPENAI_API_KEY;
+    globalThis.fetch = async () => new Response(JSON.stringify({ error: { message: 'temporary test failure' } }), { status: 503 });
+    const response = await request('POST', '/api/ideas', JSON.stringify({ type: 'Wedding' }), { 'content-type': 'application/json' });
+    const payload = JSON.parse(response.body);
+    assert.equal(response.status, 200);
+    assert.equal(payload.source, 'built-in');
+    assert.match(payload.ideas[0][0], /welcome/i);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousGemini === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = previousGemini;
+    if (previousOpenAI === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previousOpenAI;
+  }
+});
+
+test('OpenAI idea generation validates and returns structured ideas', async () => {
+  const previousGemini = process.env.GEMINI_API_KEY;
+  const previousOpenAI = process.env.OPENAI_API_KEY;
+  const previousFetch = globalThis.fetch;
+  try {
+    delete process.env.GEMINI_API_KEY;
+    process.env.OPENAI_API_KEY = 'test-openai-key';
+    globalThis.fetch = async (_url, options) => {
+      assert.match(options.headers.Authorization, /^Bearer test-openai-key$/);
+      return new Response(JSON.stringify({ choices: [{ message: { content: '{"ideas":[["Shared playlist","Ask guests for favorite songs."]]}' } }] }), { status: 200 });
+    };
+    const response = await request('POST', '/api/ideas', JSON.stringify({ type: 'Birthday' }), { 'content-type': 'application/json' });
+    const payload = JSON.parse(response.body);
+    assert.equal(response.status, 200);
+    assert.equal(payload.source, 'openai');
+    assert.equal(payload.ideas[0][0], 'Shared playlist');
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousGemini === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = previousGemini;
+    if (previousOpenAI === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previousOpenAI;
+  }
+});
+
 test('plan input is normalized, bounded, and safe for unexpected JSON shapes', () => {
   const normalized = cleanPlan({ name: '  Maya birthday  ', type: 'Birthday', guests: -5, budget: -20, note: 'n'.repeat(1700) });
   assert.equal(normalized.name, 'Maya birthday');
@@ -219,4 +293,21 @@ test('static file handler blocks encoded path traversal', async () => {
   const response = await request('GET', '/..%2f.env');
   assert.equal(response.status, 403);
   assert.doesNotMatch(response.body, /FIREBASE_API_KEY|GEMINI_API_KEY/);
+});
+
+test('static file handler never exposes environment files, server code, or project configuration', async () => {
+  for (const path of ['/.env', '/.env.example', '/server.mjs', '/package.json', '/firestore.rules', '/api/[...path].mjs']) {
+    const response = await request('GET', path);
+    assert.equal(response.status, 404, `${path} must not be publicly served`);
+    assert.doesNotMatch(response.body, /FIREBASE_API_KEY|GEMINI_API_KEY|private_key/i);
+  }
+});
+
+test('planner and required public assets remain available after static route restriction', async () => {
+  for (const path of ['/planner.html', '/manifest.webmanifest', '/jashn-logo-gradient.jpg', '/jashn-logo-transparent.png']) {
+    const response = await request('HEAD', path);
+    assert.equal(response.status, 200, `${path} should remain available`);
+    assert.equal(response.body, '');
+    assert.equal(response.headers['X-Content-Type-Options'], 'nosniff');
+  }
 });
